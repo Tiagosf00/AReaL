@@ -1,3 +1,10 @@
+"""Unified training script for proxy-based agent workflows.
+
+Supports both Anthropic and OpenAI agent workflows:
+- Anthropic: MathAgent (simple), MathToolAgent (claude_agent_sdk with MCP tools)
+- OpenAI: MathAgent, MultiTurnMathAgent, MathToolAgent (openai-agents SDK)
+"""
+
 import sys
 
 from examples.experimental.proxy.configs import AgentConfig
@@ -24,14 +31,18 @@ def main(args):
         tokenizer=tokenizer,
     )
 
+    # Build workflow kwargs from config
     workflow_kwargs = dict(
         temperature=config.gconfig.temperature,
         top_p=config.gconfig.top_p,
-        # For anthtropic
+        # For anthropic
         max_tokens=config.gconfig.max_tokens,
         # For openai
         max_completion_tokens=config.gconfig.max_new_tokens,
+        # For agent-specific kwargs
+        max_turns=config.max_turns,
     )
+
     eval_workflow_kwargs = workflow_kwargs.copy()
     eval_workflow_kwargs["temperature"] = 0.6
 
