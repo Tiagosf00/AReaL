@@ -38,6 +38,33 @@ class RolloutWorkflow(ABC):
 
 
 class AgentWorkflow(ABC):
+    """Base class for agent-based workflows (DEPRECATED).
+
+    .. deprecated:: 1.0.0
+        Inheriting from AgentWorkflow is no longer required. Any class with
+        a compatible ``run()`` method will work. This class is kept for
+        backward compatibility but may be removed in a future version.
+
+    To use agent-based workflows, simply implement a class with::
+
+        async def run(self, data: dict[str, Any], **extra_kwargs: Any) -> dict[str, float] | float
+
+    The ``extra_kwargs`` will receive:
+
+    - base_url: str - The OpenAI-compatible proxy server URL
+    - http_client: httpx.AsyncClient - HTTP client for async requests
+    """
+
+    def __init__(self):
+        import warnings
+
+        warnings.warn(
+            "AgentWorkflow is deprecated. You no longer need to inherit from this class. "
+            "Any class with a compatible run() method will work.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     @abstractmethod
     async def run(
         self, data: dict[str, Any], **extra_kwargs: Any
@@ -48,6 +75,7 @@ class AgentWorkflow(ABC):
         include any parameters or hyperparameters required.
 
         `extra_kwargs` includes parameters provided by AReaL:
+
         - base_url: str
             The base URL of the OpenAI-compatible proxy server
         - http_client: httpx.AsyncClient
@@ -67,11 +95,11 @@ class AgentWorkflow(ABC):
 
 
 # Type alias for workflow parameter across the stack.
-# Accepts RolloutWorkflow instances/classes, string import paths, or AgentWorkflow instances/classes.
+# Accepts RolloutWorkflow instances/classes, string import paths, or any
+# callable object with a compatible run() method.
 WorkflowLike = Union[
     "RolloutWorkflow",
     type["RolloutWorkflow"],
     str,
-    "AgentWorkflow",
-    type["AgentWorkflow"],
+    Any,  # Any object with async def run(data, **extra_kwargs) method
 ]
