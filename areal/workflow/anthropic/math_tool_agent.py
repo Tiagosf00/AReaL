@@ -91,8 +91,8 @@ class MathToolAgent(AgentWorkflow):
 
     SYSTEM_PROMPT = (
         "Answer the user's math questions using the available calculator tools. "
+        "Don't give the answer directly, you must use tools to do the mathematical calculation."
     )
-    "Don't give the answer directly, you must use tools to do the mathematical calculation."
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
