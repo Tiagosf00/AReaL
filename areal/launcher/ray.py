@@ -634,6 +634,5 @@ def ray_main(config, run_id: int = 0):
 
 if __name__ == "__main__":
     # usage: python -m areal.launcher.ray \
-    #   <entry_point> --config <config_path> [<additional_args>] \
-    #   launcher.ray.main_func_name=<main_func_name_in_entry_point>
+    #   <entry_point> --config <config_path> [<additional_args>]
     main()
