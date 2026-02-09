@@ -1,27 +1,18 @@
 #!/bin/bash
 set -e  # Exit immediately if any command fails
 
-echo "🚀 Setting up .venv environment..."
-
-# 1. Create .venv if it doesn't exist
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
-fi
-
-# 2. Activate the environment
-source .venv/bin/activate
-
 echo "🚀 Starting environment setup..."
 
-# 3. Install python libraries (uv, snapshot_download, load_dataset)
-pip install --user uv huggingface_hub datasets
+# 1. Install python libraries
+pip install uv huggingface_hub datasets pytest torch
+pip install -e .
 
-# 4. Install uv 
+# 2. Install uv 
 echo "📦 Installing uv..."
 pip install uv
 uv sync --extra cuda
 
-# 5. Run download scripts
+# 3. Run download scripts
 echo "📥 Downloading datasets..."
 python3 datasets/download_dataset.py
 
@@ -29,3 +20,7 @@ echo "📥 Downloading models..."
 python3 models/download_model.py
 
 echo "✅ Setup complete!"
+
+
+# Container image:
+# ghcr.io/inclusionai/areal-runtime:v0.5.3
