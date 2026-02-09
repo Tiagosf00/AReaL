@@ -893,7 +893,11 @@ class WorkflowExecutor:
                     completion_ids, skip_special_tokens=False
                 )
 
-                reward = rewards[i].item()
+                reward_tensor = rewards[i]
+                if reward_tensor.numel() == 1:
+                    reward: float | list[float] = float(reward_tensor.item())
+                else:
+                    reward = reward_tensor.flatten().tolist()
 
                 record = {
                     "task_id": task_id,

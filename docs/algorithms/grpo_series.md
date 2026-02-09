@@ -108,6 +108,21 @@ actor:
     group_size: ${gconfig.n_samples}
 ```
 
+For multi-objective rewards (GDPO-style), use a separate normalization config
+for objective-wise normalization before weighted aggregation:
+
+```yaml
+actor:
+  multi_reward_norm:
+    mean_level: group
+    std_level: group
+    group_size: ${gconfig.n_samples}
+  gdpo_weights: [1.0, 1.0]
+  reward_norm:
+    mean_level: batch
+    std_level: batch
+```
+
 **AReaL Default Practice**: The default configuration uses `std_level: batch` for
 advantage normalization. This has been the AReaL team's standard practice across diverse
 RL applications, from game AI (StarCraft) to LLM training (RLHF, reasoning, agentic

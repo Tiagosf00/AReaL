@@ -80,7 +80,7 @@ class RLVRWorkflow(RolloutWorkflow):
         resp: ModelResponse,
         prompt_str: str,
         task_data: dict[str, Any],
-    ) -> float:
+    ) -> Any:
         """Decode completion and compute reward.
 
         Traces reward phase execution for SessionTracer. Decodes output tokens
@@ -88,8 +88,8 @@ class RLVRWorkflow(RolloutWorkflow):
 
         Returns
         -------
-        float
-            Reward value.
+        Any
+            Reward value returned by the reward function.
         """
         completions_str = self.tokenizer.decode(resp.output_tokens)
         reward = await self.async_reward_fn(
@@ -102,6 +102,37 @@ class RLVRWorkflow(RolloutWorkflow):
 
         return reward
 
+    @staticmethod
+    def _reward_output_to_tensor(reward: Any) -> torch.Tensor:
+        def _as_float(x: Any) -> float:
+            if torch.is_tensor(x):
+                if x.numel() != 1:
+                    raise ValueError(
+                        "reward_fn list/dict tensor entries must be scalar tensors."
+                    )
+                return float(x.item())
+            return float(x)
+
+        if torch.is_tensor(reward):
+            reward_tensor = reward.detach().to(dtype=torch.float32)
+            if reward_tensor.ndim > 1:
+                raise ValueError(
+                    "reward_fn tensor output must be scalar or 1D objective list."
+                )
+            return reward_tensor
+
+        if isinstance(reward, dict):
+            if not reward:
+                raise ValueError("reward_fn returned an empty dict.")
+            reward = [reward[k] for k in sorted(reward)]
+
+        if isinstance(reward, (list, tuple)):
+            if len(reward) == 0:
+                raise ValueError("reward_fn returned an empty list/tuple.")
+            return torch.tensor([_as_float(x) for x in reward], dtype=torch.float32)
+
+        return torch.tensor(_as_float(reward), dtype=torch.float32)
+
     @session_context()
     async def _collect_samples(
         self,
@@ -109,7 +140,7 @@ class RLVRWorkflow(RolloutWorkflow):
         req: ModelRequest,
         prompt_str: str,
         task_data: dict[str, Any],
-    ) -> tuple[ModelResponse, float]:
+    ) -> tuple[ModelResponse, torch.Tensor]:
         """Generate one sample and compute its reward.
 
         Registers a new session for this sample, calls engine.agenerate,
@@ -118,17 +149,29 @@ class RLVRWorkflow(RolloutWorkflow):
 
         Returns
         -------
-        tuple[ModelResponse, float]
-            Model response and reward value.
+        tuple[ModelResponse, torch.Tensor]
+            Model response and reward tensor (scalar or 1D objective list).
         """
         async with atrace_session_phase("generate"):
             resp = await engine.agenerate(req)
 
         reward = await self._compute_rewards(resp, prompt_str, task_data)
+        reward_tensor = self._reward_output_to_tensor(reward)
 
-        stats_tracker.get(workflow_context.stat_scope()).scalar(reward=reward)
+        workflow_stats = stats_tracker.get(workflow_context.stat_scope())
+        if reward_tensor.ndim == 0:
+            workflow_stats.scalar(reward=float(reward_tensor.item()))
+        else:
+            stats = {
+                "reward": float(reward_tensor.sum().item()),
+                **{
+                    f"reward_obj_{i}": float(v)
+                    for i, v in enumerate(reward_tensor.tolist())
+                },
+            }
+            workflow_stats.scalar(**stats)
 
-        return resp, reward
+        return resp, reward_tensor
 
     async def arun_episode(
         self, engine: InferenceEngine, data: dict[str, Any]
@@ -153,7 +196,7 @@ class RLVRWorkflow(RolloutWorkflow):
         prompt_str = self.tokenizer.decode(input_ids)
 
         # Generate single response and compute reward
-        resp, reward = await self._collect_samples(engine, req, prompt_str, data)
+        resp, reward_tensor = await self._collect_samples(engine, req, prompt_str, data)
 
         # Build result tensor dict with batch dim 1
         seq = resp.input_tokens + resp.output_tokens
@@ -167,6 +210,6 @@ class RLVRWorkflow(RolloutWorkflow):
             "logprobs": torch.tensor(logprobs, dtype=torch.float32),
             "versions": torch.tensor(versions, dtype=torch.int32),
             "attention_mask": torch.ones(len(seq), dtype=torch.bool),
-            "rewards": torch.tensor(reward, dtype=torch.float32),
+            "rewards": reward_tensor,
         }
         return {k: v.unsqueeze(0) for k, v in res.items()}

@@ -193,10 +193,24 @@ def concat_padded_tensors(
             continue
         for tensor_dict in tensor_dicts:
             tensor = tensor_dict[key]
-            # Skip 1D tensors like rewards
-            if len(tensor.shape) == 1:
+            if not torch.is_tensor(tensor):
+                raise ValueError(
+                    f"concat_padded_tensors expects tensor values for key `{key}`, got {type(tensor)}"
+                )
+
+            # Only tensors aligned with attention_mask's [batch, seq] dimensions
+            # should be padded along sequence length. Other tensors (e.g. [batch, objectives])
+            # are concatenated directly.
+            attn = tensor_dict["attention_mask"]
+            is_sequence_aligned = (
+                tensor.ndim >= 2
+                and tensor.shape[0] == attn.shape[0]
+                and tensor.shape[1] == attn.shape[1]
+            )
+            if not is_sequence_aligned:
                 tensors_to_concat.append(tensor)
                 continue
+
             current_length = tensor.shape[1]
             if current_length < max_length:
                 # Pad tensor to max_length

@@ -48,7 +48,7 @@ class VisionRLVRWorkflow(RLVRWorkflow):
         resp: ModelResponse,
         prompt_str: str,
         task_data: dict[str, Any],
-    ) -> float:
+    ) -> Any:
         """Decode completion and compute reward.
 
         Traces reward phase execution for SessionTracer. Decodes output tokens
@@ -57,8 +57,8 @@ class VisionRLVRWorkflow(RLVRWorkflow):
 
         Returns
         -------
-        float
-            Reward value.
+        Any
+            Reward value returned by the reward function.
         """
 
         completions_str = self.tokenizer.decode(resp.output_tokens)
@@ -79,7 +79,7 @@ class VisionRLVRWorkflow(RLVRWorkflow):
         req: ModelRequest,
         prompt_str: str,
         task_data: dict[str, Any],
-    ) -> tuple[ModelResponse, float]:
+    ) -> tuple[ModelResponse, torch.Tensor]:
         """Generate one sample and compute its reward.
 
         Registers a new session for this sample, calls engine.agenerate,
@@ -88,17 +88,29 @@ class VisionRLVRWorkflow(RLVRWorkflow):
 
         Returns
         -------
-        tuple[ModelResponse, float]
-            Model response and reward value.
+        tuple[ModelResponse, torch.Tensor]
+            Model response and reward tensor (scalar or 1D objective list).
         """
         async with atrace_session_phase("generate"):
             resp = await engine.agenerate(req)
 
         reward = await self._compute_rewards(resp, prompt_str, task_data)
+        reward_tensor = self._reward_output_to_tensor(reward)
 
-        stats_tracker.get(workflow_context.stat_scope()).scalar(reward=reward)
+        workflow_stats = stats_tracker.get(workflow_context.stat_scope())
+        if reward_tensor.ndim == 0:
+            workflow_stats.scalar(reward=float(reward_tensor.item()))
+        else:
+            stats = {
+                "reward": float(reward_tensor.sum().item()),
+                **{
+                    f"reward_obj_{i}": float(v)
+                    for i, v in enumerate(reward_tensor.tolist())
+                },
+            }
+            workflow_stats.scalar(**stats)
 
-        return resp, reward
+        return resp, reward_tensor
 
     async def arun_episode(
         self, engine: InferenceEngine, data: dict[str, Any]
@@ -134,7 +146,7 @@ class VisionRLVRWorkflow(RLVRWorkflow):
         prompt_str = self.tokenizer.decode(input_ids)
 
         # Generate single response and compute reward
-        resp, reward = await self._collect_samples(engine, req, prompt_str, data)
+        resp, reward_tensor = await self._collect_samples(engine, req, prompt_str, data)
 
         # Build result tensor dict with batch dim 1
         seq = resp.input_tokens + resp.output_tokens
@@ -158,5 +170,5 @@ class VisionRLVRWorkflow(RLVRWorkflow):
             "multi_modal_input": multi_modal_input,
             "versions": torch.tensor(versions, dtype=torch.int32).unsqueeze(0),
             "attention_mask": torch.ones(len(seq), dtype=torch.bool).unsqueeze(0),
-            "rewards": torch.tensor(reward, dtype=torch.float32).unsqueeze(0),
+            "rewards": reward_tensor.unsqueeze(0),
         }

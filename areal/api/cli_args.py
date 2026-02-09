@@ -942,6 +942,12 @@ class PPOActorConfig(TrainEngineConfig):
         default=None, metadata={"help": "The second momentum threshold for M2PO."}
     )
     # Reward
+    multi_reward_norm: NormConfig | None = field(
+        default=None,
+        metadata={
+            "help": "Normalization configuration for each reward objective before weighted aggregation."
+        },
+    )
     reward_norm: NormConfig | None = field(
         default=None,
         metadata={"help": "Normalization configuration for rewards"},
@@ -952,6 +958,12 @@ class PPOActorConfig(TrainEngineConfig):
     reward_bias: float = field(default=0.0, metadata={"help": "Reward bias"})
     reward_clip: float = field(
         default=20.0, metadata={"help": "Maximum absolute value for reward clipping"}
+    )
+    gdpo_weights: list[float] = field(
+        default_factory=list,
+        metadata={
+            "help": "Optional per-objective weights for GDPO aggregation. Empty means all ones."
+        },
     )
     overlong_reward_penalty: bool = field(
         default=False,
