@@ -113,7 +113,8 @@ for objective-wise normalization before weighted aggregation:
 
 ```yaml
 actor:
-  multi_reward_norm:
+  multi_reward_method: gdpo
+  gdpo_norm:
     mean_level: group
     std_level: group
     group_size: ${gconfig.n_samples}

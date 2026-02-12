@@ -16,6 +16,8 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 
 from areal.utils import logging, name_resolve, pkg_version
 from areal.utils.constants import (
+    MULTI_REWARD_METHOD_SUM,
+    MULTI_REWARD_METHODS_ALL,
     PROX_LOGP_METHOD_RECOMPUTE,
     PROX_LOGP_METHODS_ALL,
 )
@@ -942,10 +944,17 @@ class PPOActorConfig(TrainEngineConfig):
         default=None, metadata={"help": "The second momentum threshold for M2PO."}
     )
     # Reward
-    multi_reward_norm: NormConfig | None = field(
+    multi_reward_method: str = field(
+        default=MULTI_REWARD_METHOD_SUM,
+        metadata={
+            "help": "Method for reducing multi-objective rewards.",
+            "choices": MULTI_REWARD_METHODS_ALL,
+        },
+    )
+    gdpo_norm: NormConfig | None = field(
         default=None,
         metadata={
-            "help": "Normalization configuration for each reward objective before weighted aggregation."
+            "help": "Normalization configuration for each reward objective in GDPO."
         },
     )
     reward_norm: NormConfig | None = field(

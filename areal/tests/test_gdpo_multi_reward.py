@@ -9,11 +9,13 @@ from areal.utils.data import concat_padded_tensors
 
 def _build_actor(
     *,
-    multi_reward_norm: NormConfig | None = None,
+    multi_reward_method: str = "sum",
+    gdpo_norm: NormConfig | None = None,
     gdpo_weights: list[float] | None = None,
 ) -> PPOActor:
     config = PPOActorConfig(
-        multi_reward_norm=multi_reward_norm,
+        multi_reward_method=multi_reward_method,
+        gdpo_norm=gdpo_norm,
         gdpo_weights=gdpo_weights or [],
         kl_ctl=0.0,
         reward_scaling=1.0,
@@ -23,7 +25,47 @@ def _build_actor(
     return PPOActor(config=config, engine=MagicMock())
 
 
-def test_multi_reward_norm_with_equal_weights():
+def test_scalar_reward_path_unchanged():
+    rewards = torch.tensor([1.0, -2.0, 3.0], dtype=torch.float32)
+    actor = _build_actor(multi_reward_method=None, gdpo_norm=None, gdpo_weights=[])
+    output = actor._collapse_reward_objectives(rewards)
+    torch.testing.assert_close(output, rewards, atol=1e-6, rtol=1e-6)
+
+
+def test_sum_mode_direct_sum():
+    rewards = torch.tensor(
+        [
+            [1.0, 10.0],
+            [3.0, 14.0],
+            [2.0, 20.0],
+            [6.0, 28.0],
+        ],
+        dtype=torch.float32,
+    )
+    actor = _build_actor(multi_reward_method="sum")
+    output = actor._collapse_reward_objectives(rewards)
+
+    expected = torch.tensor([11.0, 17.0, 22.0, 34.0], dtype=torch.float32)
+    torch.testing.assert_close(output, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_sum_mode_ignores_weights():
+    rewards = torch.tensor(
+        [
+            [1.0, 10.0],
+            [3.0, 14.0],
+            [2.0, 20.0],
+            [6.0, 28.0],
+        ],
+        dtype=torch.float32,
+    )
+    actor = _build_actor(multi_reward_method="sum", gdpo_weights=[1.0, 2.0])
+    output = actor._collapse_reward_objectives(rewards)
+    expected = torch.tensor([11.0, 17.0, 22.0, 34.0], dtype=torch.float32)
+    torch.testing.assert_close(output, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_gdpo_mode_without_weights():
     rewards = torch.tensor(
         [
             [1.0, 10.0],
@@ -34,7 +76,8 @@ def test_multi_reward_norm_with_equal_weights():
         dtype=torch.float32,
     )
     actor = _build_actor(
-        multi_reward_norm=NormConfig(
+        multi_reward_method="gdpo",
+        gdpo_norm=NormConfig(
             mean_level="group",
             std_level="group",
             group_size=2,
@@ -48,7 +91,7 @@ def test_multi_reward_norm_with_equal_weights():
     torch.testing.assert_close(output, expected, atol=1e-5, rtol=1e-5)
 
 
-def test_multi_reward_norm_with_explicit_weights():
+def test_gdpo_mode_with_explicit_weights():
     rewards = torch.tensor(
         [
             [1.0, 10.0],
@@ -59,7 +102,8 @@ def test_multi_reward_norm_with_explicit_weights():
         dtype=torch.float32,
     )
     actor = _build_actor(
-        multi_reward_norm=NormConfig(
+        multi_reward_method="gdpo",
+        gdpo_norm=NormConfig(
             mean_level="group",
             std_level="group",
             group_size=2,
@@ -67,38 +111,45 @@ def test_multi_reward_norm_with_explicit_weights():
         gdpo_weights=[1.0, 2.0],
     )
     output = actor._collapse_reward_objectives(rewards)
-
     expected = torch.tensor(
         [-2.1213202, 2.1213202, -2.1213202, 2.1213202], dtype=torch.float32
     )
     torch.testing.assert_close(output, expected, atol=1e-5, rtol=1e-5)
 
 
-def test_multi_reward_without_multi_reward_norm_skips_objective_normalization():
-    rewards = torch.tensor(
-        [
-            [1.0, 10.0],
-            [3.0, 14.0],
-            [2.0, 20.0],
-            [6.0, 28.0],
-        ],
-        dtype=torch.float32,
+def test_gdpo_mode_requires_gdpo_norm():
+    actor = _build_actor(multi_reward_method="gdpo", gdpo_norm=None)
+    rewards = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
+
+    try:
+        actor._collapse_reward_objectives(rewards)
+        assert False, "Expected ValueError when gdpo_norm is missing in gdpo mode."
+    except ValueError as e:
+        assert "requires actor.gdpo_norm" in str(e)
+
+
+def test_gdpo_mode_handles_single_objective_2d_rewards():
+    rewards = torch.tensor([[1.0], [3.0], [2.0], [6.0]], dtype=torch.float32)
+    actor = _build_actor(
+        multi_reward_method="gdpo",
+        gdpo_norm=NormConfig(
+            mean_level="group",
+            std_level="group",
+            group_size=2,
+        ),
+        gdpo_weights=[2.0],
     )
-    actor = _build_actor(multi_reward_norm=None, gdpo_weights=[])
     output = actor._collapse_reward_objectives(rewards)
-    expected = torch.tensor([11.0, 17.0, 22.0, 34.0], dtype=torch.float32)
+    expected = torch.tensor([-1.4142135, 1.4142135, -1.4142135, 1.4142135])
     torch.testing.assert_close(output, expected, atol=1e-5, rtol=1e-5)
 
 
-def test_scalar_reward_path_unchanged():
-    rewards = torch.tensor([1.0, -2.0, 3.0], dtype=torch.float32)
-    actor = _build_actor(multi_reward_norm=None, gdpo_weights=[])
-    output = actor._collapse_reward_objectives(rewards)
-    torch.testing.assert_close(output, rewards, atol=1e-6, rtol=1e-6)
-
-
 def test_weight_length_mismatch_raises():
-    actor = _build_actor(multi_reward_norm=None, gdpo_weights=[1.0, 2.0, 3.0])
+    actor = _build_actor(
+        multi_reward_method="gdpo",
+        gdpo_norm=NormConfig(mean_level="batch", std_level="batch", group_size=1),
+        gdpo_weights=[1.0, 2.0, 3.0],
+    )
     rewards = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
 
     try:
@@ -108,35 +159,24 @@ def test_weight_length_mismatch_raises():
         assert "gdpo_weights has length" in str(e)
 
 
-def test_multi_reward_norm_group_size_must_divide_batch():
-    actor = _build_actor(
-        multi_reward_norm=NormConfig(
-            mean_level="group",
-            std_level="group",
-            group_size=3,
-        ),
-        gdpo_weights=[],
-    )
-    rewards = torch.tensor(
-        [
-            [1.0, 2.0],
-            [3.0, 4.0],
-            [5.0, 6.0],
-            [7.0, 8.0],
-        ],
-        dtype=torch.float32,
-    )
+def test_scalar_0d_reward_promoted_to_batch_size_one():
+    rewards = torch.tensor(1.0, dtype=torch.float32)
+    actor = _build_actor(multi_reward_method="sum", gdpo_norm=None, gdpo_weights=[])
+    output = actor._collapse_reward_objectives(rewards)
 
-    try:
-        actor._collapse_reward_objectives(rewards)
-        assert False, "Expected ValueError due to invalid group_size for batch."
-    except ValueError as e:
-        assert "not divisible by multi_reward_norm.group_size" in str(e)
+    assert output.shape == (1,)
+    torch.testing.assert_close(
+        output,
+        torch.tensor([1.0], dtype=torch.float32),
+        atol=1e-6,
+        rtol=1e-6,
+    )
 
 
 def test_compute_advantages_collapses_multi_objective_rewards():
     actor = _build_actor(
-        multi_reward_norm=NormConfig(
+        multi_reward_method="gdpo",
+        gdpo_norm=NormConfig(
             mean_level="group",
             std_level="group",
             group_size=2,

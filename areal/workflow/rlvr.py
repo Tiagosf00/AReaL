@@ -80,7 +80,7 @@ class RLVRWorkflow(RolloutWorkflow):
         resp: ModelResponse,
         prompt_str: str,
         task_data: dict[str, Any],
-    ) -> Any:
+    ) -> float | int | torch.Tensor:
         """Decode completion and compute reward.
 
         Traces reward phase execution for SessionTracer. Decodes output tokens
@@ -88,7 +88,7 @@ class RLVRWorkflow(RolloutWorkflow):
 
         Returns
         -------
-        Any
+        float | int | torch.Tensor
             Reward value returned by the reward function.
         """
         completions_str = self.tokenizer.decode(resp.output_tokens)
@@ -103,35 +103,18 @@ class RLVRWorkflow(RolloutWorkflow):
         return reward
 
     @staticmethod
-    def _reward_output_to_tensor(reward: Any) -> torch.Tensor:
-        def _as_float(x: Any) -> float:
-            if torch.is_tensor(x):
-                if x.numel() != 1:
-                    raise ValueError(
-                        "reward_fn list/dict tensor entries must be scalar tensors."
-                    )
-                return float(x.item())
-            return float(x)
-
+    def _reward_output_to_tensor(reward: float | int | torch.Tensor) -> torch.Tensor:
         if torch.is_tensor(reward):
             reward_tensor = reward.detach().to(dtype=torch.float32)
             if reward_tensor.ndim > 1:
                 raise ValueError(
                     "reward_fn tensor output must be scalar or 1D objective list."
                 )
+            if reward_tensor.numel() == 0:
+                raise ValueError("reward_fn tensor output must be non-empty.")
             return reward_tensor
 
-        if isinstance(reward, dict):
-            if not reward:
-                raise ValueError("reward_fn returned an empty dict.")
-            reward = [reward[k] for k in sorted(reward)]
-
-        if isinstance(reward, (list, tuple)):
-            if len(reward) == 0:
-                raise ValueError("reward_fn returned an empty list/tuple.")
-            return torch.tensor([_as_float(x) for x in reward], dtype=torch.float32)
-
-        return torch.tensor(_as_float(reward), dtype=torch.float32)
+        return torch.tensor(float(reward), dtype=torch.float32)
 
     @session_context()
     async def _collect_samples(

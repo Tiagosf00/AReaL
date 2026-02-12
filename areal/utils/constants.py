@@ -64,6 +64,18 @@ class ProxApproxMethod(str, Enum):
 
 
 # =============================================================================
+# Multi-Reward Reduction Enums
+# =============================================================================
+
+
+class MultiRewardMethod(str, Enum):
+    """Method for reducing multi-objective rewards to scalar rewards."""
+
+    SUM = "sum"
+    GDPO = "gdpo"
+
+
+# =============================================================================
 # Proximal Log-Probability Backward Compatibility Aliases
 # (use enum classes above for new code)
 # =============================================================================
@@ -83,3 +95,13 @@ PROX_APPROX_METHOD_ROLLOUT = ProxApproxMethod.ROLLOUT.value
 
 # List of all approximation methods computed for metrics comparison
 PROX_APPROX_METHODS_ALL = [m.value for m in ProxApproxMethod]
+
+
+# =============================================================================
+# Multi-Reward Backward Compatibility Aliases
+# (use enum classes above for new code)
+# =============================================================================
+
+MULTI_REWARD_METHOD_SUM = MultiRewardMethod.SUM.value
+MULTI_REWARD_METHOD_GDPO = MultiRewardMethod.GDPO.value
+MULTI_REWARD_METHODS_ALL = [m.value for m in MultiRewardMethod]

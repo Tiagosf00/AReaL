@@ -72,6 +72,13 @@ actor:
     mean_level: group
     std_level: group
     group_size: ${gconfig.n_samples}
+  # For multi-objective rewards:
+  # multi_reward_method: gdpo
+  # gdpo_norm:
+  #   mean_level: group
+  #   std_level: group
+  #   group_size: ${gconfig.n_samples}
+  # gdpo_weights: [1.0, 1.0]
   adv_norm:
     mean_level: batch
     std_level: batch

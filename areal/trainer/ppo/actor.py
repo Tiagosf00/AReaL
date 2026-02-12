@@ -8,6 +8,8 @@ from areal.api.engine_api import TrainEngine
 from areal.infra import TrainController
 from areal.utils import logging, stats_tracker
 from areal.utils.constants import (
+    MULTI_REWARD_METHOD_GDPO,
+    MULTI_REWARD_METHOD_SUM,
     PROX_APPROX_METHOD_LINEAR,
     PROX_APPROX_METHOD_LOGLINEAR,
     PROX_APPROX_METHOD_ROLLOUT,
@@ -45,9 +47,9 @@ class PPOActor:
         self.kl_estimator = KLEstimator(config.kl_estimator)
 
         self.adv_norm = Normalization(config.adv_norm) if config.adv_norm else None
-        self.multi_reward_norm = (
-            Normalization(config.multi_reward_norm)
-            if config.multi_reward_norm
+        self.gdpo_norm = (
+            Normalization(config.gdpo_norm)
+            if config.gdpo_norm
             else None
         )
         self.reward_norm = (
@@ -115,7 +117,10 @@ class PPOActor:
             f"  adv_norm: {config.adv_norm if config.adv_norm else 'DISABLED (None)'}"
         )
         logger.info(
-            f"  multi_reward_norm: {config.multi_reward_norm if config.multi_reward_norm else 'DISABLED (None)'}"
+            f"  multi_reward_method: {config.multi_reward_method}"
+        )
+        logger.info(
+            f"  gdpo_norm: {config.gdpo_norm if config.gdpo_norm else 'DISABLED (None)'}"
         )
         logger.info(
             f"  reward_norm: {config.reward_norm if config.reward_norm else 'DISABLED (None)'}"
@@ -124,20 +129,32 @@ class PPOActor:
         logger.info(f"  eps_clip: {config.eps_clip}")
         logger.info("=" * 70)
 
-    def _validate_multi_reward_norm_group_size(self, bs: int) -> None:
-        if self.multi_reward_norm is None:
-            return
-        uses_group_norm = (
-            self.multi_reward_norm.mean_level == "group"
-            or self.multi_reward_norm.std_level == "group"
-        )
-        if not uses_group_norm:
-            return
-        group_size = self.multi_reward_norm.group_size
-        if bs % group_size != 0:
+    def _reduce_multi_rewards_sum(self, rewards: torch.Tensor) -> torch.Tensor:
+        return rewards.sum(dim=-1).float()
+
+    def _reduce_multi_rewards_gdpo(self, rewards: torch.Tensor) -> torch.Tensor:
+        if self.gdpo_norm is None:
             raise ValueError(
-                f"Batch size {bs} is not divisible by multi_reward_norm.group_size={group_size}."
+                "multi_reward_method='gdpo' requires actor.gdpo_norm to be configured."
             )
+        _, n_objectives = rewards.shape
+        normalized = []
+        for obj_idx in range(n_objectives):
+            normalized.append(self.gdpo_norm(rewards[:, obj_idx]))
+        rewards = torch.stack(normalized, dim=-1)
+
+        if self.config.gdpo_weights:
+            if len(self.config.gdpo_weights) != n_objectives:
+                raise ValueError(
+                    f"gdpo_weights has length {len(self.config.gdpo_weights)} "
+                    f"but rewards have {n_objectives} objectives."
+                )
+            weights = rewards.new_tensor(self.config.gdpo_weights)
+
+        else:
+            weights = rewards.new_ones(n_objectives)
+
+        return (rewards * weights.view(1, -1)).sum(dim=-1).float()
 
     def _collapse_reward_objectives(self, reward_score: torch.Tensor) -> torch.Tensor:
         """Collapse multi-objective rewards to scalar rewards."""
@@ -147,41 +164,16 @@ class PPOActor:
             return reward_score.float()
         if reward_score.ndim != 2:
             raise ValueError(
-                f"`rewards` must be 1D or 2D tensor, got shape {tuple(reward_score.shape)}"
+                f"`rewards` must be 0D, 1D, or 2D tensor, got shape {tuple(reward_score.shape)}"
             )
-
-        if reward_score.shape[1] == 1:
-            return reward_score[:, 0].float()
 
         reward_score = reward_score.float()
-        bs, n_objectives = reward_score.shape
-
-        if self.multi_reward_norm is not None:
-            self._validate_multi_reward_norm_group_size(bs)
-            normalized = []
-            for obj_idx in range(n_objectives):
-                normalized.append(self.multi_reward_norm(reward_score[:, obj_idx]))
-            reward_score = torch.stack(normalized, dim=-1)
-
-        if self.config.gdpo_weights:
-            if len(self.config.gdpo_weights) != n_objectives:
-                raise ValueError(
-                    f"gdpo_weights has length {len(self.config.gdpo_weights)} "
-                    f"but rewards have {n_objectives} objectives."
-                )
-            weights = torch.tensor(
-                self.config.gdpo_weights,
-                dtype=reward_score.dtype,
-                device=reward_score.device,
-            )
-        else:
-            weights = torch.ones(
-                n_objectives,
-                dtype=reward_score.dtype,
-                device=reward_score.device,
-            )
-
-        return (reward_score * weights.view(1, -1)).sum(dim=-1).float()
+        method = self.config.multi_reward_method
+        if method == MULTI_REWARD_METHOD_SUM:
+            return self._reduce_multi_rewards_sum(reward_score)
+        if method == MULTI_REWARD_METHOD_GDPO:
+            return self._reduce_multi_rewards_gdpo(reward_score)
+        raise ValueError(f"Unknown multi_reward_method: {method}")
 
     @trace_perf("ppo_actor.compute_logp", category="compute")
     @torch.no_grad()

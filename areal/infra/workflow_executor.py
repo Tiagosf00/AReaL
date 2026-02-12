@@ -894,10 +894,11 @@ class WorkflowExecutor:
                 )
 
                 reward_tensor = rewards[i]
-                if reward_tensor.numel() == 1:
-                    reward: float | list[float] = float(reward_tensor.item())
-                else:
-                    reward = reward_tensor.flatten().tolist()
+                reward = (
+                    reward_tensor.item()
+                    if reward_tensor.ndim == 0
+                    else reward_tensor.tolist()
+                )
 
                 record = {
                     "task_id": task_id,

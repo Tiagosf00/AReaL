@@ -48,7 +48,7 @@ class VisionRLVRWorkflow(RLVRWorkflow):
         resp: ModelResponse,
         prompt_str: str,
         task_data: dict[str, Any],
-    ) -> Any:
+    ) -> float | int | torch.Tensor:
         """Decode completion and compute reward.
 
         Traces reward phase execution for SessionTracer. Decodes output tokens
@@ -57,7 +57,7 @@ class VisionRLVRWorkflow(RLVRWorkflow):
 
         Returns
         -------
-        Any
+        float | int | torch.Tensor
             Reward value returned by the reward function.
         """
 
