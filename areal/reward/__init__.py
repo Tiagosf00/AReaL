@@ -5,7 +5,7 @@ from areal.utils import logging
 
 logger = logging.getLogger("RewardUtils")
 
-VALID_REWARD_FN = ["clevr_count_70k", "geometry3k"]
+VALID_REWARD_FN = ["clevr_count_70k", "geometry3k", "qa_em"]
 
 
 def get_custom_reward_fn(path: str, **kwargs):
@@ -17,6 +17,10 @@ def get_custom_reward_fn(path: str, **kwargs):
         from .geometry3k import geometry3k_reward_fn
 
         return geometry3k_reward_fn
+    elif "qa_em" in path:
+        from .qa_em import qa_em_reward_fn
+
+        return qa_em_reward_fn
     else:
         raise ValueError(
             f"Reward function {path} is not supported. "

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from transformers.processing_utils import ProcessorMixin
     from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-VALID_DATASETS = ["gsm8k", "clevr_count_70k", "geometry3k", "hh-rlhf", "torl_data"]
+VALID_DATASETS = ["gsm8k", "clevr_count_70k", "geometry3k", "hh-rlhf", "torl_data", "nq_search"]
 
 logger = logging.getLogger("Dataset")
 
@@ -96,6 +96,16 @@ def _get_custom_dataset(
         from .torl_data import get_torl_data_rl_dataset
 
         return get_torl_data_rl_dataset(
+            path=path,
+            split=split,
+            tokenizer=tokenizer,
+            max_length=max_length,
+            **kwargs,
+        )
+    elif "nq_search" in path and type == "rl":
+        from .nq_search import get_nq_search_rl_dataset
+
+        return get_nq_search_rl_dataset(
             path=path,
             split=split,
             tokenizer=tokenizer,
