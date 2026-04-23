@@ -48,13 +48,13 @@ class SearchR1Workflow(RolloutWorkflow):
         reward_fn: Callable[..., Any] | str,
         gconfig: GenerationHyperparameters,
         tokenizer: PreTrainedTokenizerFast | str,
-        max_turns: int = 2,
-        max_start_length: int = 2048,
-        max_prompt_length: int = 4096,
-        max_response_length: int = 500,
-        max_obs_length: int = 500,
-        search_url: str = "http://127.0.0.1:8000/retrieve",
-        topk: int = 3,
+        max_turns,
+        max_start_length,
+        max_prompt_length,
+        max_response_length,
+        max_obs_length,
+        search_url,
+        topk,
     ):
         self.reward_fn = reward_fn
         self.gconfig = gconfig

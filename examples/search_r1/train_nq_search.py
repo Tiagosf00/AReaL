@@ -31,12 +31,12 @@ def main(args):
         reward_fn="areal.reward.qa_em.qa_em_reward_fn",
         gconfig=config.gconfig,
         tokenizer=config.tokenizer_path,
-        max_turns=2,
+        max_turns=4,
         max_start_length=2048,
         max_prompt_length=4096,
         max_response_length=500,
         max_obs_length=500,
-        search_url="http://127.0.0.1:8000/retrieve",
+        search_url="http://127.0.0.1:8007/retrieve",
         topk=3,
     )
     eval_workflow_kwargs = workflow_kwargs.copy()

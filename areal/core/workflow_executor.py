@@ -887,7 +887,14 @@ class WorkflowExecutor:
                 if mask[-1] != 1:
                     continue
 
-                prompt_end = seqlen - sum(mask)
+                # Find the true prompt boundary: first token with loss_mask=1.
+                # This is the actual prompt/completion split, not seqlen - sum(mask)
+                # which would group all zero-masked tokens (including interleaved
+                # environment observations) into the "prompt".
+                try:
+                    prompt_end = mask.index(1)
+                except ValueError:
+                    continue
                 prompt_ids = ids[:prompt_end]
                 completion_ids = ids[prompt_end:]
 
