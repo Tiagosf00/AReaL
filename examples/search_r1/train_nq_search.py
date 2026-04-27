@@ -31,7 +31,7 @@ def main(args):
         reward_fn="areal.reward.qa_em.qa_em_reward_fn",
         gconfig=config.gconfig,
         tokenizer=config.tokenizer_path,
-        max_turns=4,
+        max_turns=2,
         max_start_length=2048,
         max_prompt_length=4096,
         max_response_length=500,
